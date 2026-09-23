@@ -50,7 +50,7 @@ async function authenticate(request, env) {
   try { password = (await request.json()).password; } catch { return response(request, { error: 'bad_request' }, 400); }
   if (typeof password !== 'string' || password.length > 200) return response(request, { error: 'bad_request' }, 400);
   const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
-  const derived = new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: hexBytes(env.PASSWORD_SALT), iterations: 250000, hash: 'SHA-256' }, keyMaterial, 256));
+  const derived = new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: hexBytes(env.PASSWORD_SALT), iterations: 100000, hash: 'SHA-256' }, keyMaterial, 256));
   if (!sameBytes(derived, hexBytes(env.PASSWORD_HASH))) {
     await env.ARCHIVE.put(throttleKey, JSON.stringify({ count: attempts.until > Date.now() ? attempts.count + 1 : 1, until: Date.now() + 15 * 60 * 1000 }));
     return response(request, { error: 'wrong_password' }, 401);
@@ -89,11 +89,11 @@ export default {
       return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': corsOrigin(request), 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Authorization, Content-Type', 'Access-Control-Max-Age': '86400', Vary: 'Origin' } });
     }
     try {
-      if (url.pathname === '/api/auth' && request.method === 'POST') return authenticate(request, env);
+      if (url.pathname === '/api/auth' && request.method === 'POST') return await authenticate(request, env);
       if (!await authorized(request, env)) return response(request, { error: 'unauthorized' }, 401);
-      if (url.pathname === '/api/entries' && request.method === 'GET') return listEntries(request, env);
+      if (url.pathname === '/api/entries' && request.method === 'GET') return await listEntries(request, env);
       const id = entryId(url.pathname);
-      if (id && request.method === 'PUT') return putEntry(request, env, id);
+      if (id && request.method === 'PUT') return await putEntry(request, env, id);
       if (id && request.method === 'DELETE') { await env.ARCHIVE.delete(`entries/${id}.json`); return response(request, { deleted: true }); }
       return response(request, { error: 'not_found' }, 404);
     } catch (error) { console.error(error); return response(request, { error: 'server_error' }, 500); }
