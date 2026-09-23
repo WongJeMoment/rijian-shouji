@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f3ed">
+  <meta name="description" content="一个私密、安静的日记空间。写字，放照片，保存值得记住的日子。">
+  <title>日间手记 · 我的私人日记</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div id="lock-screen" class="lock-screen">
+    <div class="lock-decoration" aria-hidden="true">✳</div>
+    <main class="lock-card">
+      <div class="brand-mark" aria-hidden="true">日</div>
+      <p class="eyebrow">A LITTLE SPACE FOR YOURSELF</p>
+      <h1>日间手记</h1>
+      <p class="lock-intro">把日子写下来，让回忆有处可寻。</p>
+      <form id="unlock-form" class="unlock-form">
+        <label for="password">请输入日记密码</label>
+        <div class="password-wrap">
+          <input id="password" type="password" autocomplete="current-password" placeholder="输入密码" required>
+          <button id="toggle-password" class="text-button" type="button" aria-label="显示密码">显示</button>
+        </div>
+        <p id="lock-error" class="form-error" role="alert" aria-live="polite"></p>
+        <button class="primary-button unlock-button" type="submit">进入我的日记 <span aria-hidden="true">↗</span></button>
+      </form>
+      <p class="lock-footnote">仅你自己可以解锁。日记和照片会加密保存在当前浏览器。</p>
+    </main>
+    <div class="lock-bottom">PRIVATE JOURNAL · MADE FOR SLOW DAYS</div>
+  </div>
+
+  <div id="app" class="app hidden">
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a href="#" class="site-brand" id="home-link" aria-label="日间手记首页"><span class="mini-mark">日</span><span>日间手记</span></a>
+        <div class="header-right"><span id="today-label" class="today-label"></span><span class="header-divider"></span><button id="lock-button" class="header-button" type="button">锁定 <span aria-hidden="true">↗</span></button></div>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar">
+        <div class="sidebar-head"><p class="eyebrow">YOUR COLLECTION</p><h2>我的留档 <span id="entry-count">00</span></h2></div>
+        <button id="new-entry" class="new-button" type="button"><span class="plus">＋</span> 写一篇新日记 <span aria-hidden="true">↗</span></button>
+        <label class="search-box"><span aria-hidden="true">⌕</span><input id="search-input" type="search" placeholder="搜索标题或内容" aria-label="搜索日记"></label>
+        <div id="archive-list" class="archive-list" aria-live="polite"></div>
+        <div class="sidebar-bottom"><span class="tiny-star" aria-hidden="true">✳</span><p>生活是由无数个<br>值得记下的瞬间组成。</p></div>
+      </aside>
+
+      <section class="main-panel">
+        <div class="main-topline"><span id="section-label">NEW ENTRY / 新的一页</span><span class="topline-right">YOUR EVERYDAY, BEAUTIFULLY KEPT</span></div>
+
+        <div id="editor-view" class="editor-view">
+          <div class="editor-heading"><p class="eyebrow accent">START WRITING</p><h1 id="editor-heading-title">写下今天的故事<span class="period">.</span></h1><p>一段文字，几张照片，把此刻轻轻收好。</p></div>
+          <form id="entry-form">
+            <div class="editor-paper">
+              <div class="editor-meta"><span id="entry-date"></span><span class="meta-line"></span><span>DIARY NO. <span id="entry-number">001</span></span></div>
+              <input id="entry-title" class="title-input" type="text" placeholder="给今天起个名字…" maxlength="100" aria-label="日记标题">
+              <div class="title-rule"></div>
+              <textarea id="entry-body" class="body-input" placeholder="今天，有什么想记录的？&#10;&#10;可以写下一段心情、一场相遇，或只是平凡的一天。&#10;&#10;把图片拖到这里，就能放进文字中。" aria-label="日记内容"></textarea>
+              <div id="drop-overlay" class="drop-overlay hidden">把照片放在这里 <span>↓</span></div>
+              <div id="attachment-list" class="attachment-list hidden"></div>
+              <div class="paper-footer"><span>✳ &nbsp; 不用写得完美，真实就很好。</span><span id="word-count">0 字</span></div>
+            </div>
+            <div id="photo-dropzone" class="photo-dropzone" role="button" tabindex="0" aria-label="添加照片，可拖入或点击选择">
+              <span class="photo-icon" aria-hidden="true">▧</span><div><strong>把照片拖到这里</strong><p>或点击选择图片，照片会自动插入日记</p></div><span class="photo-action">添加照片 ↗</span>
+            </div>
+            <input id="photo-input" type="file" accept="image/*" multiple class="visually-hidden">
+            <div class="editor-actions"><span id="save-status" role="status" aria-live="polite"></span><div><button id="cancel-edit" class="subtle-button hidden" type="button">取消编辑</button><button id="save-entry" class="primary-button" type="submit">保存这篇日记 <span aria-hidden="true">↗</span></button></div></div>
+          </form>
+        </div>
+
+        <article id="reader-view" class="reader-view hidden">
+          <div class="reader-top"><span class="eyebrow accent">A MOMENT, KEPT FOREVER</span><div><button id="edit-entry" class="subtle-button" type="button">编辑日记 ↗</button><button id="delete-entry" class="subtle-button danger" type="button">删除</button></div></div>
+          <div id="reader-content" class="reader-content"></div>
+          <div class="reader-bottom"><span>✳</span><p>愿每个平凡的日子，都有被记住的理由。</p></div>
+        </article>
+      </section>
+    </main>
+    <footer class="site-footer"><span>日间手记 © <span id="year"></span></span><div><button id="export-button" type="button">导出加密备份 ↗</button><button id="import-button" type="button">导入备份 ↗</button><input id="import-input" class="visually-hidden" type="file" accept="application/json,.json"></div><span>WRITE IT DOWN. KEEP IT CLOSE.</span></footer>
+  </div>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+</body>
+</html>
