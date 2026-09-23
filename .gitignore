@@ -1,3 +1,10 @@
 .qa_smoke.py
+.qa_cloud.py
 *-check.png
 __pycache__/
+.tools/
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.sites-artifact.tar.gz

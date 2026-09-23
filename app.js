@@ -1,18 +1,15 @@
-/* 日记内容仅在浏览器中保存。仓库里只有密码校验摘要，没有明文密码。 */
-const PASSWORD_SALT = 'c793261e5d8695ba326632e7940cc88b';
-const PASSWORD_VERIFIER = '81d4c30571498337a5fd75d7cbb2019e6b42a34422197dee29508177e9924b48';
+/* 日记在浏览器中加密，密文同步到云端；密码不写入公开仓库。 */
+const CLOUD_ORIGIN = location.hostname === '127.0.0.1' || location.hostname === 'localhost' || location.hostname.endsWith('.chatgpt.site') ? location.origin : 'https://rijian-shouji-cloud.workspace-985459.chatgpt.site';
 const KEY_SALT = new TextEncoder().encode('rijian-shouji-private-archive-v1');
 const DB_NAME = 'rijian-shouji-v1';
 const STORE_NAME = 'entries';
-const state = { key: null, entries: [], selectedId: null, editingId: null, images: [], dirty: false, mode: 'edit' };
+const state = { key: null, token: null, entries: [], selectedId: null, editingId: null, images: [], dirty: false, mode: 'edit' };
 const $ = (selector) => document.querySelector(selector);
 let databasePromise;
 let toastTimer;
 
-function bytesToHex(bytes) { return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(''); }
 function bytesToBase64(bytes) { let out = ''; for (let i = 0; i < bytes.length; i += 8192) out += String.fromCharCode(...bytes.subarray(i, i + 8192)); return btoa(out); }
 function base64ToBytes(value) { return Uint8Array.from(atob(value), c => c.charCodeAt(0)); }
-async function sha256(value) { return bytesToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)))); }
 async function deriveKey(password) {
   const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: KEY_SALT, iterations: 250000, hash: 'SHA-256' }, material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
@@ -63,6 +60,29 @@ async function deleteRow(id) {
     tx.onerror = () => reject(tx.error);
   });
 }
+async function cloudRequest(path, options = {}) {
+  const headers = { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}) };
+  const result = await fetch(CLOUD_ORIGIN + path, { ...options, headers, cache: 'no-store' });
+  const body = await result.json().catch(() => ({}));
+  if (!result.ok) throw new Error(body.error || `http_${result.status}`);
+  return body;
+}
+async function cloudRows() { return (await cloudRequest('/api/entries')).entries; }
+async function cloudPut(row) { return cloudRequest(`/api/entries/${row.id}`, { method: 'PUT', body: JSON.stringify(row) }); }
+async function migrateLocalRows() {
+  let remote = await cloudRows();
+  if (localStorage.getItem('rijian-cloud-migrated-v1') === 'yes') return remote;
+  const local = await getRows();
+  const byId = new Map(remote.map(row => [row.id, row]));
+  for (const row of local) {
+    const counterpart = byId.get(row.id);
+    const localEntry = await decrypt(row);
+    if (!counterpart || localEntry.updatedAt > (await decrypt(counterpart)).updatedAt) await cloudPut(row);
+  }
+  localStorage.setItem('rijian-cloud-migrated-v1', 'yes');
+  if (local.length) { remote = await cloudRows(); showToast(`已将原设备的 ${local.length} 篇本地留档检查并同步到云端。`); }
+  return remote;
+}
 function showToast(message) {
   const toast = $('#toast'); toast.textContent = message; toast.classList.remove('hidden');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.add('hidden'), 3500);
@@ -80,9 +100,10 @@ async function unlock(event) {
   button.disabled = true; button.textContent = '正在解锁…';
   $('#lock-error').textContent = '';
   try {
-    if (await sha256(PASSWORD_SALT + password) !== PASSWORD_VERIFIER) { $('#lock-error').textContent = '密码不正确，请再试一次。'; return; }
+    const login = await cloudRequest('/api/auth', { method: 'POST', body: JSON.stringify({ password }) });
+    state.token = login.token;
     state.key = await deriveKey(password);
-    const rows = await getRows();
+    const rows = await migrateLocalRows();
     state.entries = await Promise.all(rows.map(async row => ({ ...await decrypt(row), id: row.id })));
     state.entries.sort((a, b) => b.createdAt - a.createdAt);
     $('#password').value = '';
@@ -91,12 +112,13 @@ async function unlock(event) {
     if (state.entries.length) openEntry(state.entries[0].id); else newEntry(true);
   } catch (error) {
     console.error(error);
-    $('#lock-error').textContent = '无法打开本地留档，请检查浏览器存储设置。';
+    state.token = null; state.key = null;
+    $('#lock-error').textContent = error.message === 'wrong_password' ? '密码不正确，请再试一次。' : error.message === 'too_many_attempts' ? '尝试次数过多，请十五分钟后再试。' : '云端暂时无法连接，请检查网络后重试。';
   } finally { button.disabled = false; button.innerHTML = '进入我的日记 <span aria-hidden="true">↗</span>'; }
 }
 function lock() {
   if (!mayLeave()) return;
-  state.key = null; state.entries = []; state.images = []; state.selectedId = null; state.editingId = null; state.dirty = false;
+  state.key = null; state.token = null; state.entries = []; state.images = []; state.selectedId = null; state.editingId = null; state.dirty = false;
   $('#reader-content').replaceChildren(); $('#attachment-list').replaceChildren();
   $('#app').classList.add('hidden'); $('#lock-screen').classList.remove('hidden'); $('#password').focus();
 }
@@ -227,22 +249,24 @@ async function saveEntry(event) {
   if (!body && !state.images.length) { $('#entry-body').focus(); showToast('写一点文字或加一张照片吧。'); return; }
   const existing = state.entries.find(item => item.id === state.editingId);
   const entry = { id: existing?.id || crypto.randomUUID(), title, body, images: structuredClone(state.images), createdAt: existing?.createdAt || Date.now(), updatedAt: Date.now() };
-  const button = $('#save-entry'); button.disabled = true; $('#save-status').textContent = '正在加密保存…';
+  const button = $('#save-entry'); button.disabled = true; $('#save-status').textContent = '正在加密并同步到云端…';
   try {
-    const encrypted = await encrypt(entry); await putRows([{ id: entry.id, ...encrypted }]);
+    const encrypted = await encrypt(entry); const row = { id: entry.id, ...encrypted };
+    await cloudPut(row);
+    try { await putRows([row]); } catch (cacheError) { console.warn('Local cache unavailable', cacheError); }
     state.entries = state.entries.filter(item => item.id !== entry.id); state.entries.push(entry); state.entries.sort((a, b) => b.createdAt - a.createdAt);
-    state.dirty = false; openEntry(entry.id); showToast('日记已经好好收起来了。');
-  } catch (error) { console.error(error); $('#save-status').textContent = '保存失败，请检查浏览器可用空间。'; showToast('保存失败，请检查浏览器可用空间。'); }
+    state.dirty = false; openEntry(entry.id); showToast('日记已加密保存到云端。');
+  } catch (error) { console.error(error); $('#save-status').textContent = '云端保存失败，请检查网络后重试。'; showToast('云端保存失败，请检查网络后重试。'); }
   finally { button.disabled = false; }
 }
 async function removeEntry() {
   const entry = state.entries.find(item => item.id === state.selectedId); if (!entry || !confirm(`确定删除《${entry.title}》吗？删除后无法恢复，除非已有备份。`)) return;
-  try { await deleteRow(entry.id); state.entries = state.entries.filter(item => item.id !== entry.id); showToast('日记已删除。'); if (state.entries.length) openEntry(state.entries[0].id); else newEntry(true); }
+  try { await cloudRequest(`/api/entries/${entry.id}`, { method: 'DELETE' }); try { await deleteRow(entry.id); } catch (cacheError) { console.warn('Local cache unavailable', cacheError); } state.entries = state.entries.filter(item => item.id !== entry.id); showToast('日记已从云端删除。'); if (state.entries.length) openEntry(state.entries[0].id); else newEntry(true); }
   catch (error) { console.error(error); showToast('删除失败，请重试。'); }
 }
 async function exportArchive() {
   try {
-    const rows = await getRows();
+    const rows = await cloudRows();
     const backup = { app: 'rijian-shouji', version: 1, exportedAt: new Date().toISOString(), entries: rows };
     const url = URL.createObjectURL(new Blob([JSON.stringify(backup)], { type: 'application/json' }));
     const link = document.createElement('a'); link.href = url; link.download = `日间手记-加密备份-${new Date().toISOString().slice(0, 10)}.json`; document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
@@ -262,8 +286,9 @@ async function importArchive(event) {
       imported.push({ row, entry });
     }
     if (!confirm(`备份中有 ${imported.length} 篇日记。导入会补充留档，并用备份版本覆盖同一篇日记。确定导入吗？`)) return;
-    await putRows(imported.map(item => item.row));
-    const rows = await getRows(); state.entries = await Promise.all(rows.map(async row => ({ ...await decrypt(row), id: row.id })));
+    for (const item of imported) await cloudPut(item.row);
+    try { await putRows(imported.map(item => item.row)); } catch (cacheError) { console.warn('Local cache unavailable', cacheError); }
+    const rows = await cloudRows(); state.entries = await Promise.all(rows.map(async row => ({ ...await decrypt(row), id: row.id })));
     state.entries.sort((a, b) => b.createdAt - a.createdAt);
     if (state.entries.length) openEntry(state.entries[0].id); else newEntry(true);
     showToast(`已导入 ${imported.length} 篇日记。`);

@@ -8,7 +8,7 @@
   <title>日间手记 · 我的私人日记</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
-  <script src="./app.js" defer></script>
+  <script type="module" src="./app.js"></script>
 </head>
 <body>
   <div id="lock-screen" class="lock-screen">
@@ -27,7 +27,7 @@
         <p id="lock-error" class="form-error" role="alert" aria-live="polite"></p>
         <button class="primary-button unlock-button" type="submit">进入我的日记 <span aria-hidden="true">↗</span></button>
       </form>
-      <p class="lock-footnote">仅你自己可以解锁。日记和照片会加密保存在当前浏览器。</p>
+      <p class="lock-footnote">仅你自己可以解锁。日记和照片会加密保存到云端，可在不同设备查看。</p>
     </main>
     <div class="lock-bottom">PRIVATE JOURNAL · MADE FOR SLOW DAYS</div>
   </div>
